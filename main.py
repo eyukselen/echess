@@ -1,3 +1,4 @@
+from inspect import FullArgSpec
 import wx
 import sys
 from wx.svg import SVGimage
@@ -25,6 +26,7 @@ class Piece:
         self.pos = def_pos
         bg = BoardGeometry()
         self.coord = bg.board_pos[self.pos]
+        self.fullscreen = False
         self.shown = True
 
     def HitTest(self, pt):
@@ -42,6 +44,9 @@ class Piece:
         dc.Blit(self.coord[0], self.coord[1],
                 self.bmp.GetWidth(), self.bmp.GetHeight(),
                 memDC, 0, 0, op, True)
+    
+    def move(self):
+        pass
 
 
 class BoardGeometry:
@@ -106,7 +111,7 @@ class Pieces:
                            ]
 
 
-class Board(wx.Panel):
+class Board(wx.ScrolledWindow):
     def __init__(self, parent, id):
         wx.Panel.__init__(self, parent, id)
         # geometry
@@ -118,6 +123,8 @@ class Board(wx.Panel):
         # pieces
         self.pieces = Pieces()
         self.drag_piece = None
+        self.drag_image = None
+        self.hilite_piece = None
 
         self.Bind(wx.EVT_PAINT, self.OnPaint)
         self.Bind(wx.EVT_LEFT_DOWN, self.on_left_down)
@@ -125,6 +132,8 @@ class Board(wx.Panel):
         self.Bind(wx.EVT_MOTION, self.on_mouse_move)
 
     def on_left_up(self, event):
+        self.drag_image.EndDrag()
+        self.drag_image = None
         self.drag_piece = None
         print(self.find_square(event.GetPosition()))
    
@@ -132,36 +141,74 @@ class Board(wx.Panel):
         self.find_square(event.GetPosition())
         piece = self.find_piece(event.GetPosition())
 
-        # If a shape was 'hit', then set that as the shape we're going to
-        # drag around. Get our start position. Dragging has not yet started.
-        # That will happen once the mouse moves, OR the mouse is released.
         if piece:
             print(piece.name)
             self.drag_piece = piece
+            self.drag_start_pos = event.GetPosition()
         print(self.find_square(event.GetPosition()))
 
     def on_mouse_move(self, event):
         if not self.drag_piece or not event.Dragging() or not event.LeftIsDown():
             return
-        # We are already dragging the piece, so move it to the new position.
-        new_pos = event.GetPosition()
-        # Find the square that the mouse is over.
-        square = self.find_square(new_pos)
-        # If the mouse is over a valid square, then check if the piece can move
-        # to that square. If it can, then 'drag' the piece to that square.
-        if square:
-            # If the square is occupied, then check if the piece is of the
-            # same color. If it is, then we can't move there.
-            if square.piece:
-                if square.piece.color == self.drag_piece.color:
-                    return
-            # Check if the piece can move to the square.
-            if self.drag_piece.can_move_to(square):
-                # Move the piece to the square.
-                self.drag_piece.move_to(square)
-                # Redraw the board.
-                self.Refresh()
-        
+
+        # if we have a shape, but haven't started dragging yet
+        if self.drag_piece and not self.drag_image:
+            # only start the drag after having moved a couple pixels
+            tolerance = 2
+            pt = event.GetPosition()
+            dx = abs(pt.x - self.drag_start_pos.x)
+            dy = abs(pt.y - self.drag_start_pos.y)
+            if dx <= tolerance and dy <= tolerance:
+                return
+
+            # refresh the area of the window where the shape was so it
+            # will get erased.
+            self.drag_piece.shown = False
+            self.RefreshRect(self.drag_piece.GetRect(), True)
+            self.Update()
+
+            item = self.drag_piece.bmp
+            self.drag_image = wx.DragImage(item, wx.Cursor(wx.CURSOR_HAND))
+
+            hotspot = self.drag_start_pos - self.drag_piece.coord
+            self.drag_image.BeginDrag(hotspot, self, False)
+
+            self.drag_image.Move(pt)
+            self.drag_image.Show()
+
+        # if we have shape and image then move it, posibly highlighting another shape.
+        elif self.drag_piece and self.drag_image:
+            onShape = self.find_piece(event.GetPosition())
+            unhiliteOld = False
+            hiliteNew = False
+
+            # figure out what to hilite and what to unhilite
+            if self.hilite_piece:
+                if onShape is None or self.hilite_piece is not onShape:
+                    unhiliteOld = True
+
+            if onShape and onShape is not self.hilite_piece and onShape.shown:
+                hiliteNew = True
+
+            # if needed, hide the drag image so we can update the window
+            if unhiliteOld or hiliteNew:
+                self.drag_image.Hide()
+
+            if unhiliteOld:
+                dc = wx.ClientDC(self)
+                self.hilite_piece.Draw(dc)
+                self.hilite_piece = None
+
+            if hiliteNew:
+                dc = wx.ClientDC(self)
+                self.hilite_piece = onShape
+                self.hilite_piece.Draw(dc, wx.INVERT)
+
+            # now move it and show it again if needed
+            self.drag_image.Move(event.GetPosition())
+            if unhiliteOld or hiliteNew:
+                self.drag_image.Show()
+            
 
 
     def find_piece(self, pt):
