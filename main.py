@@ -17,51 +17,165 @@ if sys.platform == 'win32':
 # endregion
 
 
-class Pieces(wx.Panel):
+class Piece:
+    def __init__(self, svg, name, def_pos):
+        img = SVGimage.CreateFromFile(svg)
+        self.bmp = img.ConvertToScaledBitmap(wx.Size(96, 96), window=None)
+        self.name = name
+        self.pos = def_pos
+        bg = BoardGeometry()
+        self.coord = bg.board_pos[self.pos]
+        self.shown = True
+
+    def HitTest(self, pt):
+        rect = self.GetRect()
+        return rect.Contains(pt)
+        print(self.name)
+
+    def GetRect(self):
+        return wx.Rect(self.coord[0], self.coord[1],
+                       self.bmp.GetWidth(), self.bmp.GetHeight())
+
+    def Draw(self, dc, op=wx.COPY):
+        memDC = wx.MemoryDC()
+        memDC.SelectObject(self.bmp)
+        dc.Blit(self.coord[0], self.coord[1],
+                self.bmp.GetWidth(), self.bmp.GetHeight(),
+                memDC, 0, 0, op, True)
+
+
+class BoardGeometry:
+    def __init__(self):
+        self.piece_size = (96, 96)
+        self.square_size = 100
+        self.piece_margin = self.square_size - self.piece_size[0]
+
+        self.files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
+        self.ranks = ['1', '2', '3', '4', '5', '6', '7', '8']
+        self.ranks.reverse()
+        self.coords = [f + r for f in self.files for r in self.ranks]
+        self.board_pos = {}
+
+        for f in self.files:
+            for r in self.ranks:
+                self.board_pos[f + r] = (self.files.index(f) * self.square_size + self.piece_margin,
+                                         self.ranks.index(r) * self.square_size + self.piece_margin)
+        self.ranks.reverse()
+
+
+class Pieces:
     def __init__(self) -> None:
-        lst = {'kl': 'Chess_klt45.svg',
-               'ql': 'Chess_qlt45.svg',
-               'rl': 'Chess_rlt45.svg',
-               'nl': 'Chess_nlt45.svg',
-               'bl': 'Chess_blt45.svg',
-               'pl': 'Chess_plt45.svg',
-               'kd': 'Chess_kdt45.svg',
-               'qd': 'Chess_qdt45.svg',
-               'rd': 'Chess_rdt45.svg',
-               'nd': 'Chess_ndt45.svg',
-               'bd': 'Chess_bdt45.svg',
-               'pd': 'Chess_pdt45.svg',
-               }
-        pieces = {}
-        for k, v in lst.items():
-            img = SVGimage.CreateFromFile(v)
-            bmp = img.ConvertToScaledBitmap(wx.Size(96, 96), self)
-            pieces[k] = bmp
-        self.pieces = pieces
+        self.wr1 = Piece('Chess_rlt45.svg', 'White Rook', 'a1')
+        self.wn1 = Piece('Chess_nlt45.svg', 'White Knight', 'b1')
+        self.wb1 = Piece('Chess_blt45.svg', 'White Bishop', 'c1')
+        self.wq = Piece('Chess_qlt45.svg', 'White Queen', 'd1')
+        self.wk = Piece('Chess_klt45.svg', 'White King', 'e1')
+        self.wb2 = Piece('Chess_blt45.svg', 'White Bishop', 'f1')
+        self.wn2 = Piece('Chess_nlt45.svg', 'White Knight', 'g1')
+        self.wr2 = Piece('Chess_rlt45.svg', 'White Rook', 'h1')
+        self.wp1 = Piece('Chess_plt45.svg', 'White Pawn', 'a2')
+        self.wp2 = Piece('Chess_plt45.svg', 'White Pawn', 'b2')
+        self.wp3 = Piece('Chess_plt45.svg', 'White Pawn', 'c2')
+        self.wp4 = Piece('Chess_plt45.svg', 'White Pawn', 'd2')
+        self.wp5 = Piece('Chess_plt45.svg', 'White Pawn', 'e2')
+        self.wp6 = Piece('Chess_plt45.svg', 'White Pawn', 'f2')
+        self.wp7 = Piece('Chess_plt45.svg', 'White Pawn', 'g2')
+        self.wp8 = Piece('Chess_plt45.svg', 'White Pawn', 'h2')
+
+        self.br1 = Piece('Chess_rdt45.svg', 'Black Rook', 'a8')
+        self.bn1 = Piece('Chess_ndt45.svg', 'Black Knight', 'b8')
+        self.bb1 = Piece('Chess_bdt45.svg', 'Black Bishop', 'c8')
+        self.bq = Piece('Chess_qdt45.svg', 'Black Queen', 'd8')
+        self.bk = Piece('Chess_kdt45.svg', 'Black King', 'e8')
+        self.bb2 = Piece('Chess_bdt45.svg', 'Black Bishop', 'f8')
+        self.bn2 = Piece('Chess_ndt45.svg', 'Black Knight', 'g8')
+        self.br2 = Piece('Chess_rdt45.svg', 'Black Rook', 'h8')
+
+        self.bp1 = Piece('Chess_pdt45.svg', 'Black Pawn', 'a7')
+        self.bp2 = Piece('Chess_pdt45.svg', 'Black Pawn', 'b7')
+        self.bp3 = Piece('Chess_pdt45.svg', 'Black Pawn', 'c7')
+        self.bp4 = Piece('Chess_pdt45.svg', 'Black Pawn', 'd7')
+        self.bp5 = Piece('Chess_pdt45.svg', 'Black Pawn', 'e7')
+        self.bp6 = Piece('Chess_pdt45.svg', 'Black Pawn', 'f7')
+        self.bp7 = Piece('Chess_pdt45.svg', 'Black Pawn', 'g7')
+        self.bp8 = Piece('Chess_pdt45.svg', 'Black Pawn', 'h7')
+        self.all_pieces = [self.wr1, self.wn1, self.wb1, self.wq, self.wk,self.wb2, self.wn2, self.wr2,
+                           self.wp1, self.wp2, self.wp3, self.wp4, self.wp5, self.wp6, self.wp7, self.wp8,
+                           self.br1, self.bn1, self.bb1, self.bq, self.bk, self.bb2, self.bn2, self.br2,
+                           self.bp1, self.bp2, self.bp3, self.bp4, self.bp5, self.bp6, self.bp7, self.bp8,
+                           ]
 
 
 class Board(wx.Panel):
     def __init__(self, parent, id):
         wx.Panel.__init__(self, parent, id)
-        self.square_size = 128
-        self.sq_margin = self.square_size * 0.15
+        # geometry
         self.dark_sq = wx.Colour(148, 120, 86)
         self.light_sq = wx.Colour(214, 198, 140)
         self.SetBackgroundColour("grey")
-        self.Bind(wx.EVT_PAINT, self.OnPaint)
+        # logical geometry
+        self.bg = BoardGeometry()
+        # pieces
         self.pieces = Pieces()
-        self.kl = self.pieces.pieces['kl']
-        self.ql = self.pieces.pieces['ql']
-        self.nl = self.pieces.pieces['nl']
-        self.bl = self.pieces.pieces['bl']
-        self.rl = self.pieces.pieces['rl']
-        self.pl = self.pieces.pieces['pl']
-        self.kd = self.pieces.pieces['kd']
-        self.qd = self.pieces.pieces['qd']
-        self.nd = self.pieces.pieces['nd']
-        self.bd = self.pieces.pieces['bd']
-        self.rd = self.pieces.pieces['rd']
-        self.pd = self.pieces.pieces['pd']
+        self.drag_piece = None
+
+        self.Bind(wx.EVT_PAINT, self.OnPaint)
+        self.Bind(wx.EVT_LEFT_DOWN, self.on_left_down)
+        self.Bind(wx.EVT_LEFT_UP, self.on_left_up)
+        self.Bind(wx.EVT_MOTION, self.on_mouse_move)
+
+    def on_left_up(self, event):
+        self.drag_piece = None
+        print(self.find_square(event.GetPosition()))
+   
+    def on_left_down(self, event):
+        self.find_square(event.GetPosition())
+        piece = self.find_piece(event.GetPosition())
+
+        # If a shape was 'hit', then set that as the shape we're going to
+        # drag around. Get our start position. Dragging has not yet started.
+        # That will happen once the mouse moves, OR the mouse is released.
+        if piece:
+            print(piece.name)
+            self.drag_piece = piece
+        print(self.find_square(event.GetPosition()))
+
+    def on_mouse_move(self, event):
+        if not self.drag_piece or not event.Dragging() or not event.LeftIsDown():
+            return
+        # We are already dragging the piece, so move it to the new position.
+        new_pos = event.GetPosition()
+        # Find the square that the mouse is over.
+        square = self.find_square(new_pos)
+        # If the mouse is over a valid square, then check if the piece can move
+        # to that square. If it can, then 'drag' the piece to that square.
+        if square:
+            # If the square is occupied, then check if the piece is of the
+            # same color. If it is, then we can't move there.
+            if square.piece:
+                if square.piece.color == self.drag_piece.color:
+                    return
+            # Check if the piece can move to the square.
+            if self.drag_piece.can_move_to(square):
+                # Move the piece to the square.
+                self.drag_piece.move_to(square)
+                # Redraw the board.
+                self.Refresh()
+        
+
+
+    def find_piece(self, pt):
+        for piece in self.pieces.all_pieces:
+            if piece.HitTest(pt):
+                return piece
+        return None
+
+    def find_square(self, pt):
+        x, y = pt
+        if x <= self.bg.square_size * 8 and y <= self.bg.square_size * 8:
+            coord_rank = 7 - int(y / self.bg.square_size)
+            coord_file = int(x / self.bg.square_size)
+            return self.bg.files[coord_file] + self.bg.ranks[coord_rank]
 
     def OnPaint(self, evt):
         self.dc = wx.PaintDC(self)
@@ -71,39 +185,10 @@ class Board(wx.Panel):
                     self.dc.SetBrush(wx.Brush(self.light_sq))
                 else:
                     self.dc.SetBrush(wx.Brush(self.dark_sq))
-                self.dc.DrawRectangle(x * self.square_size, y * self.square_size, self.square_size, self.square_size)    
+                self.dc.DrawRectangle(x * self.bg.square_size, y * self.bg.square_size , self.bg.square_size, self.bg.square_size)    
 
-        # # Draw the pieces
-        # i = 0
-        # for k, v in self.pieces.pieces.items():
-        #     i += 1
-        #     self.dc.DrawBitmap(v, 100 * i + 16, 100 * i + 16, True)
-        for i in range(8):
-            self.dc.DrawBitmap(self.pd, i * self.square_size + self.sq_margin, 1 * self.square_size + self.sq_margin, True)
-            self.dc.DrawBitmap(self.pl, i * self.square_size + self.sq_margin, 6 * self.square_size + self.sq_margin, True)
-        
-        self.dc.DrawBitmap(self.rl, 0 * self.square_size + self.sq_margin, 7 * self.square_size + self.sq_margin, True)
-        self.dc.DrawBitmap(self.nl, 1 * self.square_size + self.sq_margin, 7 * self.square_size + self.sq_margin, True)
-        self.dc.DrawBitmap(self.bl, 2 * self.square_size + self.sq_margin, 7 * self.square_size + self.sq_margin, True)
-        self.dc.DrawBitmap(self.ql, 3 * self.square_size + self.sq_margin, 7 * self.square_size + self.sq_margin, True)
-        self.dc.DrawBitmap(self.kl, 4 * self.square_size + self.sq_margin, 7 * self.square_size + self.sq_margin, True)
-        self.dc.DrawBitmap(self.bl, 5 * self.square_size + self.sq_margin, 7 * self.square_size + self.sq_margin, True)
-        self.dc.DrawBitmap(self.nl, 6 * self.square_size + self.sq_margin, 7 * self.square_size + self.sq_margin, True)
-        self.dc.DrawBitmap(self.rl, 7 * self.square_size + self.sq_margin, 7 * self.square_size + self.sq_margin, True)
-
-        self.dc.DrawBitmap(self.rd, 0 * self.square_size + self.sq_margin, self.sq_margin, True)
-        self.dc.DrawBitmap(self.nd, 1 * self.square_size + self.sq_margin, self.sq_margin, True)
-        self.dc.DrawBitmap(self.bd, 2 * self.square_size + self.sq_margin, self.sq_margin, True)
-        self.dc.DrawBitmap(self.qd, 3 * self.square_size + self.sq_margin, self.sq_margin, True)
-        self.dc.DrawBitmap(self.kd, 4 * self.square_size + self.sq_margin, self.sq_margin, True)
-        self.dc.DrawBitmap(self.bd, 5 * self.square_size + self.sq_margin, self.sq_margin, True)
-        self.dc.DrawBitmap(self.nd, 6 * self.square_size + self.sq_margin, self.sq_margin, True)
-        self.dc.DrawBitmap(self.rd, 7 * self.square_size + self.sq_margin, self.sq_margin, True)
-
-        del self.dc
-
-    def positionPieces():
-        pass
+        for piece in self.pieces.all_pieces:
+            piece.Draw(self.dc)
 
 
 class MainWindow(wx.Frame):
