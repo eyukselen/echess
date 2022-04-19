@@ -63,8 +63,10 @@ class BoardGeometry:
 
         for f in self.files:
             for r in self.ranks:
-                self.board_pos[f + r] = (self.files.index(f) * self.square_size + self.piece_margin,
-                                         self.ranks.index(r) * self.square_size + self.piece_margin)
+                self.board_pos[f + r] = (self.files.index(f) *
+                                         self.square_size + self.piece_margin,
+                                         self.ranks.index(r) *
+                                         self.square_size + self.piece_margin)
         self.ranks.reverse()
 
 
@@ -104,10 +106,14 @@ class Pieces:
         self.bp6 = Piece('Chess_pdt45.svg', 'Black Pawn', 'f7')
         self.bp7 = Piece('Chess_pdt45.svg', 'Black Pawn', 'g7')
         self.bp8 = Piece('Chess_pdt45.svg', 'Black Pawn', 'h7')
-        self.all_pieces = [self.wr1, self.wn1, self.wb1, self.wq, self.wk,self.wb2, self.wn2, self.wr2,
-                           self.wp1, self.wp2, self.wp3, self.wp4, self.wp5, self.wp6, self.wp7, self.wp8,
-                           self.br1, self.bn1, self.bb1, self.bq, self.bk, self.bb2, self.bn2, self.br2,
-                           self.bp1, self.bp2, self.bp3, self.bp4, self.bp5, self.bp6, self.bp7, self.bp8,
+        self.all_pieces = [self.wr1, self.wn1, self.wb1, self.wq,
+                           self.wk, self.wb2, self.wn2, self.wr2,
+                           self.wp1, self.wp2, self.wp3, self.wp4,
+                           self.wp5, self.wp6, self.wp7, self.wp8,
+                           self.br1, self.bn1, self.bb1, self.bq,
+                           self.bk, self.bb2, self.bn2, self.br2,
+                           self.bp1, self.bp2, self.bp3, self.bp4,
+                           self.bp5, self.bp6, self.bp7, self.bp8,
                            ]
 
 
@@ -130,7 +136,7 @@ class MoveEditor(gridlib.Grid):
         self.SetSize(self.GetSize()[0], self.GetSize()[1] + self.GetRowSize(0))
         self.InvalidateBestSize()
         self.GetParent().Layout()
-        
+
         row = self.GetNumberRows() - 1
         col = 0
         if move.split('-')[0] == 'b':
@@ -236,7 +242,8 @@ class Board(wx.Panel):
             self.drag_image.Move(pt)
             self.drag_image.Show()
 
-        # if we have shape and image then move it, posibly highlighting another shape.
+        # if we have shape and image then move it, 
+        # posibly highlighting another shape.
         elif self.drag_piece and self.drag_image:
             onShape = self.find_piece(event.GetPosition())
             unhiliteOld = False
