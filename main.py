@@ -1,5 +1,6 @@
-from inspect import FullArgSpec
+import wx.lib.inspection  # for debugging
 import wx
+import wx.grid as gridlib
 import sys
 from wx.svg import SVGimage
 
@@ -32,7 +33,6 @@ class Piece:
     def HitTest(self, pt):
         rect = self.GetRect()
         return rect.Contains(pt)
-        print(self.name)
 
     def GetRect(self):
         return wx.Rect(self.coord[0], self.coord[1],
@@ -111,17 +111,48 @@ class Pieces:
                            ]
 
 
-class Board(wx.ScrolledWindow):
+class MoveEditor(gridlib.Grid):
+    def __init__(self, parent, id) -> None:
+        gridlib.Grid.__init__(self, parent, -1)
+        self.CreateGrid(0, 2)
+        self.SetSize(wx.Size(200, 200))
+        self.SetWindowStyleFlag(wx.VSCROLL)
+        self.SetRowLabelSize(64)
+        self.SetColLabelValue(0, 'White')
+        self.SetColLabelValue(1, 'Black')
+        self.SetCornerLabelValue('Moves')
+        self.ShowScrollbars(horz=False, vert=True)
+        self.history = []
+
+    def add_move(self, move):
+        self.history.append(move)
+        self.AppendRows(1)
+        self.SetSize(self.GetSize()[0], self.GetSize()[1] + self.GetRowSize(0))
+        self.InvalidateBestSize()
+        self.GetParent().Layout()
+        
+        row = self.GetNumberRows() - 1
+        col = 0
+        if move.split('-')[0] == 'b':
+            col = 1
+        self.SetCellValue(row, col, move)
+
+    def clear_history(self):
+        self.history = []
+
+
+class Board(wx.Panel):
     def __init__(self, parent, id):
         wx.Panel.__init__(self, parent, id)
         # geometry
         self.dark_sq = wx.Colour(148, 120, 86)
         self.light_sq = wx.Colour(214, 198, 140)
-        self.SetBackgroundColour("grey")
+        self.SetBackgroundColour("tan")
         # logical geometry
         self.bg = BoardGeometry()
         # pieces
         self.pieces = Pieces()
+        self.selected = None
         self.drag_piece = None
         self.drag_image = None
         self.hilite_piece = None
@@ -132,11 +163,35 @@ class Board(wx.ScrolledWindow):
         self.Bind(wx.EVT_MOTION, self.on_mouse_move)
 
     def on_left_up(self, event):
+
+        if not self.drag_image or not self.drag_piece:
+            self.drag_image = None
+            self.drag_image = None
+            return
+
+        sq_old = self.drag_piece.pos
+        sq_new = self.find_square(event.GetPosition())
+        print(sq_old, sq_new)
+        turn = 'b'
+        if self.drag_piece.name.startswith('White'):
+            turn = 'w'
+
+        move = str(turn) + '-' + str(sq_old) + '-' + str(sq_new)
+        self.GetParent().GetParent().move_editor.add_move(move)
+
+        self.drag_image.Hide()
         self.drag_image.EndDrag()
         self.drag_image = None
+
+        self.drag_piece.pos = sq_new
+        self.drag_piece.coord = self.bg.board_pos[sq_new]
+
+        self.drag_piece.shown = True
+        self.RefreshRect(self.drag_piece.GetRect())
         self.drag_piece = None
-        print(self.find_square(event.GetPosition()))
-   
+
+        self.Refresh()
+
     def on_left_down(self, event):
         self.find_square(event.GetPosition())
         piece = self.find_piece(event.GetPosition())
@@ -144,11 +199,15 @@ class Board(wx.ScrolledWindow):
         if piece:
             print(piece.name)
             self.drag_piece = piece
-            self.drag_start_pos = event.GetPosition()
-        print(self.find_square(event.GetPosition()))
+            self.drag_start_coord = event.GetPosition()
+        # print(self.find_square(event.GetPosition()))
 
     def on_mouse_move(self, event):
-        if not self.drag_piece or not event.Dragging() or not event.LeftIsDown():
+        if (
+                not self.drag_piece or
+                not event.Dragging() or
+                not event.LeftIsDown()
+        ):
             return
 
         # if we have a shape, but haven't started dragging yet
@@ -156,8 +215,8 @@ class Board(wx.ScrolledWindow):
             # only start the drag after having moved a couple pixels
             tolerance = 2
             pt = event.GetPosition()
-            dx = abs(pt.x - self.drag_start_pos.x)
-            dy = abs(pt.y - self.drag_start_pos.y)
+            dx = abs(pt.x - self.drag_start_coord.x)
+            dy = abs(pt.y - self.drag_start_coord.y)
             if dx <= tolerance and dy <= tolerance:
                 return
 
@@ -165,12 +224,13 @@ class Board(wx.ScrolledWindow):
             # will get erased.
             self.drag_piece.shown = False
             self.RefreshRect(self.drag_piece.GetRect(), True)
+            # refresh whole board
             self.Update()
 
             item = self.drag_piece.bmp
             self.drag_image = wx.DragImage(item, wx.Cursor(wx.CURSOR_HAND))
 
-            hotspot = self.drag_start_pos - self.drag_piece.coord
+            hotspot = self.drag_start_coord - self.drag_piece.coord
             self.drag_image.BeginDrag(hotspot, self, False)
 
             self.drag_image.Move(pt)
@@ -208,8 +268,6 @@ class Board(wx.ScrolledWindow):
             self.drag_image.Move(event.GetPosition())
             if unhiliteOld or hiliteNew:
                 self.drag_image.Show()
-            
-
 
     def find_piece(self, pt):
         for piece in self.pieces.all_pieces:
@@ -224,33 +282,54 @@ class Board(wx.ScrolledWindow):
             coord_file = int(x / self.bg.square_size)
             return self.bg.files[coord_file] + self.bg.ranks[coord_rank]
 
-    def OnPaint(self, evt):
-        self.dc = wx.PaintDC(self)
+    def draw_pieces(self, dc):
+        for piece in self.pieces.all_pieces:
+            piece.Draw(dc)
+
+    def draw_board(self, dc):
+        # self.dc = wx.PaintDC(self)
+        # self.dc = wx.PaintDC(self)
         for x in range(8):
             for y in range(8):
                 if (x + y) % 2 == 0:
-                    self.dc.SetBrush(wx.Brush(self.light_sq))
+                    dc.SetBrush(wx.Brush(self.light_sq))
                 else:
-                    self.dc.SetBrush(wx.Brush(self.dark_sq))
-                self.dc.DrawRectangle(x * self.bg.square_size, y * self.bg.square_size , self.bg.square_size, self.bg.square_size)    
+                    dc.SetBrush(wx.Brush(self.dark_sq))
+                dc.DrawRectangle(x * self.bg.square_size,
+                                 y * self.bg.square_size,
+                                 self.bg.square_size,
+                                 self.bg.square_size)
 
-        for piece in self.pieces.all_pieces:
-            piece.Draw(self.dc)
+    def OnPaint(self, event):
+        self.dc = wx.PaintDC(self)
+        self.draw_board(self.dc)
+        self.draw_pieces(self.dc)
 
 
 class MainWindow(wx.Frame):
     def __init__(self, parent):
         wx.Frame.__init__(self, parent, title='chess game')
-        self.SetSize((1600, 1200))
+        self.SetBackgroundColour('white')
+        self.SetSize((1200, 900))
+        self.mother_sizer = wx.BoxSizer(wx.VERTICAL)
+        self.SetSizer(self.mother_sizer)
+
         self.main_panel = wx.Panel(parent=self)
-        self.main_panel.SetBackgroundColour('yellow')
-        self.main_sizer = wx.BoxSizer(wx.VERTICAL)
+        self.main_panel.SetBackgroundColour('wheet')
+        self.main_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.main_panel.SetSizer(self.main_sizer)
+
         self.board = Board(self.main_panel, -1)
+        self.move_editor = MoveEditor(self.main_panel, -1)
+        self.move_editor.FitInside()
+
         self.main_sizer.Add(self.board, 1, wx.EXPAND)
+        self.main_sizer.Add(self.move_editor, 0, wx.RIGHT)
+        self.mother_sizer.Add(self.main_panel, 1, wx.EXPAND)
         self.Show()
 
 
 app = wx.App()
 MainWindow(None)
+wx.lib.inspection.InspectionTool().Show()  # for inspecting ui stuff
 app.MainLoop()
