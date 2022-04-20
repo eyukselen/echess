@@ -44,7 +44,7 @@ class Piece:
         dc.Blit(self.coord[0], self.coord[1],
                 self.bmp.GetWidth(), self.bmp.GetHeight(),
                 memDC, 0, 0, op, True)
-    
+
     def move(self):
         pass
 
@@ -132,16 +132,16 @@ class MoveEditor(gridlib.Grid):
 
     def add_move(self, move):
         self.history.append(move)
-        self.AppendRows(1)
+        row = self.GetNumberRows() - 1
+        col = 1
+        if move.split('-')[0] == 'w':
+            col = 0
+            self.AppendRows(1)
+            row += 1
+        self.SetCellValue(row, col, '-'.join(move.split('-')[1:]))
         self.SetSize(self.GetSize()[0], self.GetSize()[1] + self.GetRowSize(0))
         self.InvalidateBestSize()
         self.GetParent().Layout()
-
-        row = self.GetNumberRows() - 1
-        col = 0
-        if move.split('-')[0] == 'b':
-            col = 1
-        self.SetCellValue(row, col, move)
 
     def clear_history(self):
         self.history = []
@@ -149,13 +149,17 @@ class MoveEditor(gridlib.Grid):
 
 class Board(wx.Panel):
     def __init__(self, parent, id):
-        wx.Panel.__init__(self, parent, id)
+        wx.Panel.__init__(self, parent, id,
+                          style=wx.BORDER_SUNKEN, size=(900, 900))
         # geometry
         self.dark_sq = wx.Colour(148, 120, 86)
         self.light_sq = wx.Colour(214, 198, 140)
+        self.legend_sq = wx.Colour('gray')
         self.SetBackgroundColour("tan")
+        self.legend_margin = 40
         # logical geometry
         self.bg = BoardGeometry()
+        # self.SetSize(self.bg.square_size * 8, self.bg.square_size * 8)
         # pieces
         self.pieces = Pieces()
         self.selected = None
@@ -167,6 +171,7 @@ class Board(wx.Panel):
         self.Bind(wx.EVT_LEFT_DOWN, self.on_left_down)
         self.Bind(wx.EVT_LEFT_UP, self.on_left_up)
         self.Bind(wx.EVT_MOTION, self.on_mouse_move)
+        self.draw_legend()
 
     def on_left_up(self, event):
 
@@ -242,7 +247,7 @@ class Board(wx.Panel):
             self.drag_image.Move(pt)
             self.drag_image.Show()
 
-        # if we have shape and image then move it, 
+        # if we have shape and image then move it,
         # posibly highlighting another shape.
         elif self.drag_piece and self.drag_image:
             onShape = self.find_piece(event.GetPosition())
@@ -294,8 +299,6 @@ class Board(wx.Panel):
             piece.Draw(dc)
 
     def draw_board(self, dc):
-        # self.dc = wx.PaintDC(self)
-        # self.dc = wx.PaintDC(self)
         for x in range(8):
             for y in range(8):
                 if (x + y) % 2 == 0:
@@ -307,17 +310,36 @@ class Board(wx.Panel):
                                  self.bg.square_size,
                                  self.bg.square_size)
 
+    def draw_legend(self):
+        font = wx.Font(14, wx.FONTFAMILY_SWISS,
+                       wx.FONTSTYLE_NORMAL,
+                       wx.FONTWEIGHT_NORMAL)
+        files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
+        ranks = ['8', '7', '6', '5', '4', '3', '2', '1']
+        for i in range(8):
+            wx.StaticText(self, wx.ID_ANY, label=ranks[i],
+                          pos=(self.bg.square_size * 8 + 10,
+                          i * self.bg.square_size + 50)).SetFont(font)
+            wx.StaticText(self, wx.ID_ANY, label=files[i],
+                          pos=(i * self.bg.square_size + 50,
+                          8 * self.bg.square_size + 10)).SetFont(font)
+
     def OnPaint(self, event):
         self.dc = wx.PaintDC(self)
         self.draw_board(self.dc)
         self.draw_pieces(self.dc)
 
 
+class Umpire:
+    def __init__(self, parent):
+        self.moves = []
+
+
 class MainWindow(wx.Frame):
     def __init__(self, parent):
         wx.Frame.__init__(self, parent, title='chess game')
         self.SetBackgroundColour('white')
-        self.SetSize((1200, 900))
+        self.SetSize((1248, 900))
         self.mother_sizer = wx.BoxSizer(wx.VERTICAL)
         self.SetSizer(self.mother_sizer)
 
@@ -330,8 +352,9 @@ class MainWindow(wx.Frame):
         self.move_editor = MoveEditor(self.main_panel, -1)
         self.move_editor.FitInside()
 
-        self.main_sizer.Add(self.board, 1, wx.EXPAND)
+        self.main_sizer.Add(self.board, 0, wx.LEFT)
         self.main_sizer.Add(self.move_editor, 0, wx.RIGHT)
+
         self.mother_sizer.Add(self.main_panel, 1, wx.EXPAND)
         self.Show()
 
