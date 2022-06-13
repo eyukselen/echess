@@ -1,3 +1,4 @@
+from msilib.schema import Error
 import wx.lib.inspection  # for debugging
 import wx
 import wx.grid as gridlib
@@ -22,8 +23,9 @@ if sys.platform == 'win32':
 class Piece:
     def __init__(self, svg, name, def_pos):
         img = SVGimage.CreateFromFile(svg)
-        self.bmp = img.ConvertToScaledBitmap(wx.Size(96, 96), window=None)
-        self.name = name
+        self.bmp = img.ConvertToScaledBitmap(wx.Size(100, 100), window=None)
+        self.name = name  # pawn, rook, knight, bishop, queen, king
+        self.color = 'w'  # w for white, b for black
         self.pos = def_pos
         bg = BoardGeometry()
         self.coord = bg.board_pos[self.pos]
@@ -45,13 +47,10 @@ class Piece:
                 self.bmp.GetWidth(), self.bmp.GetHeight(),
                 memDC, 0, 0, op, True)
 
-    def move(self):
-        pass
-
 
 class BoardGeometry:
     def __init__(self):
-        self.piece_size = (96, 96)
+        self.piece_size = (100, 100)
         self.square_size = 100
         self.piece_margin = self.square_size - self.piece_size[0]
 
@@ -68,6 +67,7 @@ class BoardGeometry:
                                          self.ranks.index(r) *
                                          self.square_size + self.piece_margin)
         self.ranks.reverse()
+        print(self.board_pos)
 
 
 class Pieces:
@@ -150,7 +150,7 @@ class MoveEditor(gridlib.Grid):
 class Board(wx.Panel):
     def __init__(self, parent, id):
         wx.Panel.__init__(self, parent, id,
-                          style=wx.BORDER_SUNKEN, size=(900, 900))
+                          style=wx.BORDER_SUNKEN, size=(850, 850))
         # geometry
         self.dark_sq = wx.Colour(148, 120, 86)
         self.light_sq = wx.Colour(214, 198, 140)
@@ -166,12 +166,38 @@ class Board(wx.Panel):
         self.drag_piece = None
         self.drag_image = None
         self.hilite_piece = None
+        self.sq_new = None
+        self.sq_old = None
+        self.overlay = wx.Overlay()
 
         self.Bind(wx.EVT_PAINT, self.OnPaint)
         self.Bind(wx.EVT_LEFT_DOWN, self.on_left_down)
         self.Bind(wx.EVT_LEFT_UP, self.on_left_up)
         self.Bind(wx.EVT_MOTION, self.on_mouse_move)
         self.draw_legend()
+
+    def move_piece(self, piece, from_sq, to_sq):
+        self.sq_old = from_sq
+        self.sq_new = to_sq
+        
+        if self.drag_piece.name.startswith('White'):
+            turn = 'w'
+
+        move = str(turn) + '-' + str(from_sq) + '-' + str(to_sq)
+        self.GetParent().GetParent().move_editor.add_move(move)
+
+        self.drag_image.Hide()
+        self.drag_image.EndDrag()
+        self.drag_image = None
+
+        self.drag_piece.pos = to_sq
+        self.drag_piece.coord = self.bg.board_pos[to_sq]
+
+        self.drag_piece.shown = True
+        self.RefreshRect(self.drag_piece.GetRect())
+        self.drag_piece = None
+
+        self.Refresh()
 
     def on_left_up(self, event):
 
@@ -182,26 +208,8 @@ class Board(wx.Panel):
 
         sq_old = self.drag_piece.pos
         sq_new = self.find_square(event.GetPosition())
+        self.move_piece(self.drag_piece, sq_old, sq_new)
         print(sq_old, sq_new)
-        turn = 'b'
-        if self.drag_piece.name.startswith('White'):
-            turn = 'w'
-
-        move = str(turn) + '-' + str(sq_old) + '-' + str(sq_new)
-        self.GetParent().GetParent().move_editor.add_move(move)
-
-        self.drag_image.Hide()
-        self.drag_image.EndDrag()
-        self.drag_image = None
-
-        self.drag_piece.pos = sq_new
-        self.drag_piece.coord = self.bg.board_pos[sq_new]
-
-        self.drag_piece.shown = True
-        self.RefreshRect(self.drag_piece.GetRect())
-        self.drag_piece = None
-
-        self.Refresh()
 
     def on_left_down(self, event):
         self.find_square(event.GetPosition())
@@ -211,7 +219,6 @@ class Board(wx.Panel):
             print(piece.name)
             self.drag_piece = piece
             self.drag_start_coord = event.GetPosition()
-        # print(self.find_square(event.GetPosition()))
 
     def on_mouse_move(self, event):
         if (
@@ -294,6 +301,49 @@ class Board(wx.Panel):
             coord_file = int(x / self.bg.square_size)
             return self.bg.files[coord_file] + self.bg.ranks[coord_rank]
 
+    # this is to detect square area but it does not match the board square
+    # TODO: check this later!
+    def highlight_square(self, sq):
+        dc = wx.ClientDC(self)
+        dc.SetBrush(wx.Brush(self.legend_sq))
+        dc.SetPen(wx.Pen(self.legend_sq))
+        dc.DrawRectangle(
+            self.bg.board_pos[sq][0],
+            self.bg.board_pos[sq][1],
+            self.bg.square_size,
+            self.bg.square_size
+        )
+
+    def highlight_sq(self, sq):
+        top_left = self.bg.board_pos[sq]
+        bottom_right = (self.bg.board_pos[sq][0] + self.bg.square_size,
+                        self.bg.board_pos[sq][1] + self.bg.square_size)
+
+        rect = wx.Rect(topLeft=top_left, bottomRight=bottom_right)
+        dc = wx.ClientDC(self)
+        odc = wx.DCOverlay(self.overlay, dc)
+        odc.Clear()
+
+        # Mac's DC is already the same as a GCDC, and it causes
+        # problems with the overlay if we try to use an actual
+        # wx.GCDC so don't try it.  If you do not need to use a
+        # semi-transparent background then you can leave this out.
+        if 'wxMac' not in wx.PlatformInfo:
+            dc = wx.GCDC(dc)
+
+        # Set the pen, for the box's border
+        dc.SetPen(wx.Pen(colour=wx.Colour(255, 255, 79),
+                         width=2))
+
+        # Create a brush (for the box's interior) with the same colour,
+        # but 50% transparency.
+
+        bc = wx.Colour(255, 255, 79, 0x40)
+        dc.SetBrush(wx.Brush(bc))
+
+        # Draw the rectangle
+        dc.DrawRectangle(rect)
+
     def draw_pieces(self, dc):
         for piece in self.pieces.all_pieces:
             piece.Draw(dc)
@@ -310,39 +360,84 @@ class Board(wx.Panel):
                                  self.bg.square_size,
                                  self.bg.square_size)
 
+    def draw_board2(self, dc):
+        radius = 0
+        for x in range(8):
+            pos_x = self.bg.files[x]
+            for y in range(8):
+                pos_y = self.bg.ranks[7 - y]
+                if ((pos_x + pos_y) == self.sq_new or
+                   (pos_x + pos_y) == self.sq_old):
+                    radius = 40
+                else:
+                    radius = 0
+                if (x + y) % 2 == 0:
+                    dc.SetBrush(wx.Brush(self.light_sq))
+                else:
+                    dc.SetBrush(wx.Brush(self.dark_sq))
+                dc.DrawRoundedRectangle(x * self.bg.square_size,
+                                        y * self.bg.square_size,
+                                        self.bg.square_size,
+                                        self.bg.square_size, radius)
+
     def draw_legend(self):
-        font = wx.Font(14, wx.FONTFAMILY_SWISS,
+        font = wx.Font(12, wx.FONTFAMILY_SWISS,
                        wx.FONTSTYLE_NORMAL,
-                       wx.FONTWEIGHT_NORMAL)
+                       wx.FONTWEIGHT_BOLD)
         files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
         ranks = ['8', '7', '6', '5', '4', '3', '2', '1']
         for i in range(8):
             wx.StaticText(self, wx.ID_ANY, label=ranks[i],
-                          pos=(self.bg.square_size * 8 + 10,
+                          pos=(self.bg.square_size * 8 + 8,
                           i * self.bg.square_size + 50)).SetFont(font)
             wx.StaticText(self, wx.ID_ANY, label=files[i],
                           pos=(i * self.bg.square_size + 50,
-                          8 * self.bg.square_size + 10)).SetFont(font)
+                          8 * self.bg.square_size + 8)).SetFont(font)
+
+    def hilite_sq(self, sq):
+        sq_coord = self.bg.board_pos[sq]
+        pdc = wx.PaintDC(self)
+        try:
+            dc = wx.GCDC(pdc)
+        except Error as e:
+            print(e.message)
+            dc = pdc
+        penclr = wx.Colour(255, 255, 128, 128)
+        dc.SetPen(wx.Pen(penclr))
+        dc.SetBrush(wx.Brush(penclr))
+        rect = wx.Rect(sq_coord[0], sq_coord[1],
+                       self.bg.square_size, self.bg.square_size)
+        rect.SetPosition(sq_coord)
+        dc.DrawRectangle(rect)
 
     def OnPaint(self, event):
         self.dc = wx.PaintDC(self)
         self.draw_board(self.dc)
+        # self.draw_board2(self.dc)
         self.draw_pieces(self.dc)
 
+    def make_move(self, piece, from_sq, to_sq):
+        pass
 
-class Umpire:
+
+class Engine:
     def __init__(self, parent):
+        self.turn = 'W'  # 'B' alternative
         self.moves = []
+        # boardx = [f + r for f in ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
+        # for r in ['1', '2', '3', '4', '5', '6', '7', '8']]
+        # board = 8*[8*[None]]  # empty board for poitions
 
 
 class MainWindow(wx.Frame):
     def __init__(self, parent):
         wx.Frame.__init__(self, parent, title='chess game')
         self.SetBackgroundColour('white')
-        self.SetSize((1248, 900))
+        self.SetSize((1248, 1000))
         self.mother_sizer = wx.BoxSizer(wx.VERTICAL)
         self.SetSizer(self.mother_sizer)
 
+        # main panel to hold everything
         self.main_panel = wx.Panel(parent=self)
         self.main_panel.SetBackgroundColour('wheet')
         self.main_sizer = wx.BoxSizer(wx.HORIZONTAL)
@@ -350,10 +445,10 @@ class MainWindow(wx.Frame):
 
         self.board = Board(self.main_panel, -1)
         self.move_editor = MoveEditor(self.main_panel, -1)
-        self.move_editor.FitInside()
 
         self.main_sizer.Add(self.board, 0, wx.LEFT)
         self.main_sizer.Add(self.move_editor, 0, wx.RIGHT)
+        # self.move_editor.FitInside()
 
         self.mother_sizer.Add(self.main_panel, 1, wx.EXPAND)
         self.Show()
