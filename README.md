@@ -1,2 +1,2 @@
 # echess
-echess is chess game written in python 
+echess is chess game in python when its done
